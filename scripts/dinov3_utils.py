@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """DINOv3工具函数模块 - 提供模型加载、特征提取等公共功能"""
 
+import os
+from pathlib import Path
+
 import torch
 import torchvision.transforms.functional as TF
 
@@ -20,17 +23,22 @@ MODEL_LAYERS = {
 }
 
 
-def load_model(model_name="dinov3_vitl16", local_path="/home/baidu/Documents/workspace/dinov3"):
+def load_model(model_name="dinov3_vitl16"):
     """从本地路径加载DINOv3模型
     
     Args:
         model_name: 模型名称
-        local_path: 本地仓库路径
+        local_path: 本地仓库路径(默认自动获取当前文件所在仓库根目录)
+        weights_path: 本地权重文件路径(支持.pth或.safetensors格式)
         
     Returns:
         加载的模型(已移至CUDA并设为eval模式)
     """
-    model = torch.hub.load(repo_or_dir=local_path, model=model_name, source="local")
+    model = torch.hub.load(
+        repo_or_dir="./",
+        model=model_name,
+        source="local"
+    )
     model.cuda()
     model.eval()
     return model
@@ -67,11 +75,12 @@ def extract_features(model, image_tensor, model_name):
     n_layers = MODEL_LAYERS[model_name]
     image_norm = TF.normalize(image_tensor, mean=IMAGENET_MEAN, std=IMAGENET_STD)
     
-    with torch.inference_mode(), torch.autocast(device_type='cuda', dtype=torch.float32):
-        feats = model.get_intermediate_layers(
-            image_norm.unsqueeze(0).cuda(), n=range(n_layers), reshape=True, norm=True
-        )
-        x = feats[-1].squeeze().detach().cpu()
+    with torch.inference_mode():
+        with torch.autocast(device_type='cuda', dtype=torch.float32):
+            feats = model.get_intermediate_layers(
+                image_norm.unsqueeze(0).cuda(), n=range(n_layers), reshape=True, norm=True
+            )
+            x = feats[-1].squeeze().detach().cpu()
     
     return x.view(x.shape[0], -1).permute(1, 0)
 

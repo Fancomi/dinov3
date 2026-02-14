@@ -99,7 +99,7 @@ def visualize_pca(image, projected_img, fg_score, save_path="pca_result.jpg"):
 
 def main():
     """主函数"""
-    model_name = "dinov3_vitl16"
+    model_name = "dinov3_vits16"
     
     # 加载模型和分类器
     print(f"加载模型: {model_name}")

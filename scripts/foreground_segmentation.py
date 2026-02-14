@@ -5,10 +5,11 @@ import io
 import pickle
 import tarfile
 import urllib.request
+from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
+from pathlib import Path
 from PIL import Image
 from scipy import signal
 from sklearn.linear_model import LogisticRegression
@@ -30,34 +31,59 @@ def load_images_from_tar(tar_uri):
 
 
 def prepare_training_data(model, images, labels, model_name):
-    """准备训练数据和标签"""
-    X_all, y_all = [], []
+    """准备训练数据和标签 - 与原始notebook完全对齐"""
+    import torch
     
-    for img, label in tqdm(zip(images, labels), total=len(images), desc="提取特征"):
-        img_tensor = resize_transform(img)
-        h_patches, w_patches = get_patch_grid_size(img_tensor)
-        
+    xs, ys, image_index = [], [], []
+    
+    # 量化滤波器(与原始notebook相同)
+    patch_quant_filter = torch.nn.Conv2d(1, 1, PATCH_SIZE, stride=PATCH_SIZE, bias=False)
+    patch_quant_filter.weight.data.fill_(1.0 / (PATCH_SIZE * PATCH_SIZE))
+    
+    for i, (img, label) in enumerate(tqdm(zip(images, labels), total=len(images), desc="提取特征")):
         # 提取特征
+        img_tensor = resize_transform(img.convert('RGB'))
         feats = extract_features(model, img_tensor, model_name)
+        xs.append(feats)
         
-        # 处理标签: 提取alpha通道并量化到patch级别
-        mask = np.array(label.split()[-1])  # alpha通道
-        mask_tensor = resize_transform(Image.fromarray(mask))
-        mask_quantized = (mask_tensor.view(h_patches, PATCH_SIZE, w_patches, PATCH_SIZE)
-                         .mean(dim=(1, 3)).squeeze() > 0.5).float()
+        # 处理标签: 使用Conv2d量化(与原始notebook相同)
+        mask_i = label.split()[-1]  # alpha通道
+        mask_i_resized = resize_transform(mask_i)
+        with torch.no_grad():
+            mask_i_quantized = patch_quant_filter(mask_i_resized).squeeze().view(-1).detach().cpu()
+        ys.append(mask_i_quantized)
         
-        X_all.append(feats.numpy())
-        y_all.append(mask_quantized.view(-1).numpy())
+        # 记录图像索引
+        image_index.append(i * torch.ones(ys[-1].shape))
     
-    return np.vstack(X_all), np.concatenate(y_all)
+    # 拼接所有数据
+    xs = torch.cat(xs)
+    ys = torch.cat(ys)
+    image_index = torch.cat(image_index)
+    
+    # 关键步骤: 过滤中间值(与原始notebook相同)
+    idx = (ys < 0.01) | (ys > 0.99)
+    xs = xs[idx]
+    ys = ys[idx]
+    image_index = image_index[idx]
+    
+    print(f"过滤前样本数: {len(ys) + (~idx).sum()}")
+    print(f"过滤后样本数: {len(ys)}")
+    print(f"过滤掉样本数: {(~idx).sum()}")
+    
+    # 二值化标签: >0(与原始notebook相同)
+    y_binary = (ys > 0).long().numpy()
+    
+    return xs.numpy(), y_binary
 
 
 def train_classifier(X, y):
-    """训练逻辑回归分类器"""
+    """训练逻辑回归分类器 - 与原始notebook参数对齐"""
     print(f"训练数据形状: X={X.shape}, y={y.shape}")
     print(f"正样本比例: {y.mean():.2%}")
     
-    clf = LogisticRegression(max_iter=1000, class_weight='balanced', n_jobs=-1)
+    # 使用与原始notebook相同的参数: C=0.1, max_iter=100000
+    clf = LogisticRegression(random_state=0, C=0.1, max_iter=100000, verbose=1)
     clf.fit(X, y)
     
     train_score = clf.score(X, y)
@@ -104,10 +130,9 @@ def visualize_result(image, fg_score, save_path="fg_seg_result.jpg"):
 
 def main():
     """主函数"""
-    model_name = "dinov3_vitl16"
+    model_name = "dinov3_vits16"
     
     # 加载模型
-    print(f"加载模型: {model_name}")
     model = load_model(model_name)
     
     # 加载训练数据
