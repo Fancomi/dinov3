@@ -1,3 +1,6 @@
-# python3 scripts/verify_alignment.py
-# python3 scripts/foreground_segmentation.py
-python3 scripts/pca.py
+# 标准demo
+python3 scripts/foreground_segmentation.py
+# python3 scripts/pca_fs.py
+
+# 更改demo
+# python3 scripts/pca.py

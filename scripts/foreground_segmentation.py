@@ -19,15 +19,25 @@ from tqdm import tqdm
 from dinov3_utils import load_model, resize_transform, extract_features, get_patch_grid_size, PATCH_SIZE
 
 
-def load_images_from_tar(tar_uri):
-    """从远程tar包加载图像"""
+def load_images_from_dir(dir_path):
+    """从本地目录加载图像"""
     images = []
-    with urllib.request.urlopen(tar_uri) as f:
-        tar = tarfile.open(fileobj=io.BytesIO(f.read()))
-        for member in sorted(tar.getmembers(), key=lambda x: x.name):
-            if member.isfile():
-                images.append(Image.open(tar.extractfile(member)))
+    path = Path(dir_path)
+    # 按文件名排序以确保图像和标签对应
+    for img_path in sorted(path.glob("*")):
+        if img_path.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp"]:
+            images.append(Image.open(img_path).convert('RGB'))
     return images
+
+
+def load_labels_from_dir(dir_path):
+    """从本地目录加载标签"""
+    labels = []
+    path = Path(dir_path)
+    for label_path in sorted(path.glob("*")):
+        if label_path.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp"]:
+            labels.append(Image.open(label_path))
+    return labels
 
 
 def prepare_training_data(model, images, labels, model_name):
@@ -102,7 +112,7 @@ def evaluate_classifier(clf, X, y):
     return precision, recall, ap_score
 
 
-def visualize_result(image, fg_score, save_path="fg_seg_result.jpg"):
+def visualize_result(image, fg_score, save_path="output/fg_seg_result.jpg"):
     """使用OpenCV可视化前景分割结果"""
     # 转换图像
     img_np = np.array(image)
@@ -137,12 +147,8 @@ def main():
     
     # 加载训练数据
     print("加载训练数据...")
-    images = load_images_from_tar(
-        "https://dl.fbaipublicfiles.com/dinov3/notebooks/foreground_segmentation/foreground_segmentation_images.tar.gz"
-    )
-    labels = load_images_from_tar(
-        "https://dl.fbaipublicfiles.com/dinov3/notebooks/foreground_segmentation/foreground_segmentation_labels.tar.gz"
-    )
+    images = load_images_from_dir("datas/foreground_segmentation_images")
+    labels = load_labels_from_dir("datas/foreground_segmentation_labels")
     print(f"加载了 {len(images)} 张图像")
     
     # 准备训练数据
@@ -157,20 +163,30 @@ def main():
     evaluate_classifier(clf, X, y)
     
     # 保存模型
-    save_path = "fg_classifier.pkl"
+    save_path = "output/fg_classifier.pkl"
     with open(save_path, 'wb') as f:
         pickle.dump(clf, f)
     print(f"\n分类器已保存至: {save_path}")
     
     # 可视化示例
     print("\n生成可视化示例...")
-    test_img = images[0]
+    # 使用另一处本地读取的测试图
+    test_img_path = "datas/local.png"
+    test_img = Image.open(test_img_path).convert('RGB')
     test_tensor = resize_transform(test_img)
     h_patches, w_patches = get_patch_grid_size(test_tensor)
     
+    print("test_img", np.asarray(test_img).shape)
+    print("test_tensor", np.asarray(test_tensor).shape)
+    print(f"h_patches, w_patches: {h_patches} {w_patches}")
+    
     feats = extract_features(model, test_tensor, model_name)
-    fg_score = clf.predict_proba(feats.numpy())[:, 1].reshape(h_patches, w_patches)
+    fg_score = clf.predict_proba(np.asarray(feats))[:, 1].reshape(h_patches, w_patches)
     fg_score_filtered = signal.medfilt2d(fg_score, kernel_size=3)
+    
+    print("feats", np.asarray(feats).shape)
+    print("fg_score", fg_score.shape)
+    print(f"fg_score_filtered: {fg_score_filtered.shape}")
     
     visualize_result(test_img, fg_score_filtered)
 

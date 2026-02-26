@@ -14,5 +14,7 @@ dist/
 # Ignore vscode directory
 .vscode/
 
+datas/
+output/
 *pkl
 *jpg
