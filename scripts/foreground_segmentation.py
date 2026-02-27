@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """前景分割训练脚本 - 使用DINOv3特征训练线性前景分割模型"""
-
+import os
 import io
 import pickle
 import tarfile
@@ -140,7 +140,7 @@ def visualize_result(image, fg_score, save_path="output/fg_seg_result.jpg"):
 
 def main():
     """主函数"""
-    model_name = "dinov3_vits16"
+    model_name = "dinov3_vitl16"
     
     # 加载模型
     model = load_model(model_name)
@@ -164,6 +164,7 @@ def main():
     
     # 保存模型
     save_path = "output/fg_classifier.pkl"
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, 'wb') as f:
         pickle.dump(clf, f)
     print(f"\n分类器已保存至: {save_path}")

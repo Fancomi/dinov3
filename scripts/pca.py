@@ -33,7 +33,7 @@ def visualize_and_save(image, projected_img, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     cv2.imwrite(save_path, combined)
 
-def main(model_name="dinov3_vits16", input_dir="datas", output_dir="output"):
+def main(model_name="dinov3_vitl16", input_dir="datas", output_dir="output"):
     """主循环：加载模型并处理指定目录下的所有图像"""
     model = load_model(model_name)
     
